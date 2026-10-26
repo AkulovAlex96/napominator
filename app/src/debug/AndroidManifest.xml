@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Только для отладочной сборки: загрузка тестовых данных из files/seed.json -->
+        <receiver android:name="app.napominator.debug.SeedReceiver" android:exported="true" />
+    </application>
+</manifest>
