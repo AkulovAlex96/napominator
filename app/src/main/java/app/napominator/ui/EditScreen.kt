@@ -127,12 +127,13 @@ private class EditState(val orig: Reminder?, presetDay: Long? = null) {
     var onceDay by mutableLongStateOf(if (orig == null && presetDay != null) presetDay else s.onceEpochDay.takeIf { it > 0 } ?: today().toEpochDay())
     var windowStart by mutableIntStateOf(s.windowStart)
     var windowEnd by mutableIntStateOf(s.windowEnd)
+    var startDay by mutableLongStateOf(s.startEpochDay.takeIf { it > 0 } ?: today().toEpochDay())
     var untilOn by mutableStateOf(s.untilEpochDay != null)
     var untilDay by mutableLongStateOf(s.untilEpochDay ?: today().plusMonths(1).toEpochDay())
 
     fun buildSchedule(): Schedule? {
         val n = every.toIntOrNull()?.coerceAtLeast(1) ?: 1
-        val start = if (orig != null) s.startEpochDay else today().toEpochDay()
+        val start = startDay
         val until = if (untilOn) untilDay else null
         val base = Schedule(times = times.sorted(), startEpochDay = start, untilEpochDay = until)
         if (trigger == Trigger.CONDITION) return if (conds.isEmpty()) null else base.copy(type = ScheduleType.DAYS_OF_WEEK, times = emptyList())
@@ -299,11 +300,11 @@ fun EditScreen(repo: Repo, id: Long, presetDay: Long? = null, onClose: () -> Uni
         }
     }
     datePick?.let { which ->
-        val init = if (which == "once") e.onceDay else e.untilDay
+        val init = when (which) { "once" -> e.onceDay; "start" -> e.startDay; else -> e.untilDay }
         val ps = rememberDatePickerState(initialSelectedDateMillis = init * 86_400_000L)
         DatePickerDialog(
             onDismissRequest = { datePick = null },
-            confirmButton = { TextButton({ ps.selectedDateMillis?.let { ms -> val d = ms / 86_400_000L; if (which == "once") e.onceDay = d else e.untilDay = d }; datePick = null }) { Text("OK") } },
+            confirmButton = { TextButton({ ps.selectedDateMillis?.let { ms -> val d = ms / 86_400_000L; when (which) { "once" -> e.onceDay = d; "start" -> e.startDay = d; else -> e.untilDay = d } }; datePick = null }) { Text("OK") } },
             dismissButton = { TextButton({ datePick = null }) { Text("Отмена") } },
         ) { DatePicker(ps) }
     }
@@ -363,6 +364,10 @@ private fun ScheduleFields(e: EditState, onTime: (String, Int) -> Unit, onDate: 
             }
             OutlinedButton({ onTime("new", 9 * 60) }) { Icon(Icons.Filled.Add, null); Text(" время") }
         }
+    }
+    if (e.mode != Mode.ONCE && e.trigger == Trigger.TIME) Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Начать с", Modifier.weight(1f))
+        TextButton({ onDate("start") }) { Text(dateLabel(e.startDay)) }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Закончить повтор", Modifier.weight(1f))

@@ -5,6 +5,15 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.border
+import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextDecoration
+import app.napominator.data.Kind
+import app.napominator.data.checkItems
+import app.napominator.data.epochDayOf
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -112,7 +121,7 @@ fun CalendarScreen(repo: Repo, allReminders: List<Reminder>, onOpen: (Long) -> U
                 CalMode.MONTH -> {
                     MonthGrid(reminders, occs, YearMonth.from(selected), selected, { selected = it }, onAdd)
                     SectionLabel("${selected.dayOfMonth} ${Schedule.monthGen(selected.monthValue)}")
-                    DayList(slotsFor(reminders, occs.filter { it.epochDay == selected.toEpochDay() }, selected), onOpen)
+                    DayList(slotsFor(reminders, occs.filter { it.epochDay == selected.toEpochDay() }, selected), onOpen, repo)
                 }
                 CalMode.WEEK -> (0..6).forEach { i ->
                     val d = first.plusDays(i.toLong())
@@ -121,9 +130,9 @@ fun CalendarScreen(repo: Repo, allReminders: List<Reminder>, onOpen: (Long) -> U
                         Modifier.padding(start = 4.dp, top = 6.dp).clickable { selected = d; mode = CalMode.DAY }, fontWeight = FontWeight.Bold,
                         color = if (d == td) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
-                    DayList(slotsFor(reminders, occs.filter { it.epochDay == d.toEpochDay() }, d), onOpen)
+                    DayList(slotsFor(reminders, occs.filter { it.epochDay == d.toEpochDay() }, d), onOpen, repo)
                 }
-                CalMode.DAY -> DayList(slotsFor(reminders, occs.filter { it.epochDay == selected.toEpochDay() }, selected), onOpen)
+                CalMode.DAY -> DayList(slotsFor(reminders, occs.filter { it.epochDay == selected.toEpochDay() }, selected), onOpen, repo)
             }
             Box(Modifier.height(90.dp))
         }
@@ -174,20 +183,38 @@ private fun MonthGrid(reminders: List<Reminder>, occs: List<app.napominator.data
 }
 
 @Composable
-private fun DayList(slots: List<Slot>, onOpen: (Long) -> Unit) {
+private fun DayList(slots: List<Slot>, onOpen: (Long) -> Unit, repo: Repo) {
+    val scope = rememberCoroutineScope()
+    val td = today().toEpochDay()
     if (slots.isEmpty()) Text("Ничего не запланировано.", color = ext.muted, modifier = Modifier.padding(4.dp), fontSize = 14.sp)
     slots.forEach { s ->
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface).clickable { onOpen(s.reminder.id) }.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.dueAt)), fontWeight = FontWeight.Bold)
-            Text(s.reminder.title, Modifier.weight(1f))
-            when (s.state) {
-                OccState.DONE -> MiniChip("выполнено", null, ext.okSoft, ext.ok)
-                OccState.SKIPPED, OccState.MISSED -> MiniChip("пропущено", null, ext.missSoft, ext.miss)
-                OccState.SHIFTED -> MiniChip("перенесено", null, ext.warnSoft, ext.warn)
-                else -> {}
+        val editable = epochDayOf(s.dueAt) <= td && s.reminder.kind != Kind.MEASURE
+        val done = s.state == OccState.DONE
+        val items = s.reminder.checkItems
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)) {
+            Row(
+                Modifier.fillMaxWidth().clickable { onOpen(s.reminder.id) }.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.dueAt)), fontWeight = FontWeight.Bold)
+                Text(s.reminder.title, Modifier.weight(1f))
+                when {
+                    done -> MiniChip("выполнено", null, ext.okSoft, ext.ok)
+                    s.state == OccState.SKIPPED || s.state == OccState.MISSED -> MiniChip("пропущено", null, ext.missSoft, ext.miss)
+                    s.state == OccState.SHIFTED -> MiniChip("перенесено", null, ext.warnSoft, ext.warn)
+                    items.isNotEmpty() && s.checked.isNotEmpty() -> MiniChip("частично ${s.checked.size}/${items.size}", null, ext.warnSoft, ext.warn)
+                }
+                if (editable) Box(
+                    Modifier.size(36.dp).clip(CircleShape).then(if (done) Modifier.background(ext.ok) else Modifier.border(2.dp, ext.line, CircleShape))
+                        .clickable { scope.launch { repo.setState(s.reminder.id, s.dueAt, if (done) OccState.PENDING else OccState.DONE) } },
+                    contentAlignment = Alignment.Center,
+                ) { if (done) Icon(Icons.Filled.Check, "Выполнено", tint = MaterialTheme.colorScheme.background) }
+            }
+            if (editable) items.forEachIndexed { i, text ->
+                Row(Modifier.fillMaxWidth().clickable { scope.launch { repo.toggleChecked(s.reminder.id, s.dueAt, i) } }.padding(start = 24.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(i in s.checked, null)
+                    Text(text, Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp), fontSize = 14.sp, textDecoration = if (i in s.checked) TextDecoration.LineThrough else null, color = if (i in s.checked) ext.muted else MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
     }

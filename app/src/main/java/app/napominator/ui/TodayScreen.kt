@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -170,7 +171,7 @@ private fun SlotRow(s: Slot, attention: Boolean, repo: Repo, onOpen: () -> Unit,
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             val timeText = if (s.reminder.triggerMode != Trigger.TIME) SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.dueAt)) else SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.dueAt))
-            Text(timeText, fontWeight = FontWeight.Bold, color = if (done || skipped) ext.muted else MaterialTheme.colorScheme.onSurface, modifier = Modifier.width(46.dp))
+            Text(timeText, fontWeight = FontWeight.Bold, color = if (done || skipped) ext.muted else MaterialTheme.colorScheme.onSurface, maxLines = 1, softWrap = false, modifier = Modifier.widthIn(min = 46.dp))
             Column(Modifier.weight(1f)) {
                 Text(s.reminder.title, fontWeight = FontWeight.Bold, textDecoration = if (done || skipped) TextDecoration.LineThrough else null, color = if (done || skipped) ext.muted else MaterialTheme.colorScheme.onSurface)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

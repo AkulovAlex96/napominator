@@ -91,7 +91,7 @@ fun WeekScreen(repo: Repo, reminders: List<Reminder>, onOpen: (Long) -> Unit, on
     var setDialog by remember { mutableStateOf<HabitSet?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val curSet = sets.firstOrNull { it.id == setId }
-    val rows = reminders.filter { it.status == Status.ACTIVE && (curSet == null || it.id in curSet.reminderIds.split(',').mapNotNull { x -> x.toLongOrNull() } || (curSet.category.isNotBlank() && it.category == curSet.category)) }
+    val rows = reminders.filter { it.status == Status.ACTIVE && !it.isOneTime() && (curSet == null || it.id in curSet.reminderIds.split(',').mapNotNull { x -> x.toLongOrNull() } || (curSet.category.isNotBlank() && it.category == curSet.category)) }
     val scope = rememberCoroutineScope()
     var dialog by remember { mutableStateOf<Pair<Reminder, LocalDate>?>(null) }
     val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv")) { uri ->
@@ -336,3 +336,6 @@ private fun SetDialog(initial: HabitSet, all: List<Reminder>, onDismiss: () -> U
         dismissButton = { Row { if (initial.id != 0L) TextButton({ onDelete(initial.id) }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }; TextButton(onDismiss) { Text("Отмена") } } },
     )
 }
+
+/** Одноразовые дела в таблицу привычек не попадают. */
+private fun Reminder.isOneTime() = triggerMode == app.napominator.data.Trigger.TIME && sched.type == app.napominator.data.ScheduleType.ONCE

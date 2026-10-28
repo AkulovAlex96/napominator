@@ -85,7 +85,28 @@ class Repo(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
             Alarms.cancelFollowUp(ctx, rid)
             Notifier.cancel(ctx, rid)
         }
+        db.reminders().get(rid)?.let { autoArchiveOnce(it) }
         Widgets.refresh(ctx)
+    }
+
+    /**
+     * Одноразовое дело уходит в архив, как только все его срабатывания выполнены (или пропущены);
+     * если отметку сняли в тот же день — возвращается в активные.
+     */
+    private suspend fun autoArchiveOnce(r: Reminder) {
+        if (r.triggerMode != Trigger.TIME || r.status == Status.PAUSED) return
+        val s = r.sched
+        if (s.type != ScheduleType.ONCE) return
+        val slots = slotsOf(r, db.occurrences().range(s.onceEpochDay, s.onceEpochDay), LocalDate.ofEpochDay(s.onceEpochDay))
+        val finished = slots.isNotEmpty() && slots.all { it.state == OccState.DONE || it.state == OccState.SKIPPED }
+        if (finished && r.status == Status.ACTIVE) {
+            db.reminders().upsert(r.copy(status = Status.ARCHIVED))
+            Alarms.cancel(ctx, r.id)
+        } else if (!finished && r.status == Status.ARCHIVED && s.onceEpochDay >= today().toEpochDay()) {
+            val back = r.copy(status = Status.ACTIVE)
+            db.reminders().upsert(back)
+            Alarms.scheduleNext(ctx, back)
+        }
     }
 
     suspend fun toggleChecked(rid: Long, dueAt: Long, idx: Int) {
@@ -94,6 +115,12 @@ class Repo(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
         val set = o.checked.split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
         if (!set.add(idx)) set.remove(idx)
         dao.update(o.copy(checked = set.sorted().joinToString(",")))
+        // Все пункты отмечены — дело выполнено; сняли пункт у выполненного — снова в работе.
+        val total = db.reminders().get(rid)?.checkItems?.size ?: 0
+        if (total > 0) {
+            if (set.size >= total && o.state != OccState.DONE) setState(rid, dueAt, OccState.DONE)
+            else if (set.size < total && o.state == OccState.DONE) setState(rid, dueAt, OccState.PENDING)
+        }
     }
 
     suspend fun addMeasurements(rid: Long, ts: Long, values: Map<String, Double>) {
@@ -146,6 +173,12 @@ class Repo(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
                     }
                     d++
                 }
+            }
+        }
+        for (r in db.reminders().active()) {
+            if (r.triggerMode == Trigger.TIME && r.sched.let { it.type == ScheduleType.ONCE && it.onceEpochDay < todayEd }) {
+                db.reminders().upsert(r.copy(status = Status.ARCHIVED))
+                Alarms.cancel(ctx, r.id)
             }
         }
         prefs.edit().putLong("lastClosed", todayEd).apply()

@@ -28,7 +28,11 @@ fun slotsOf(r: Reminder, occs: List<Occurrence>, day: LocalDate): List<Slot> {
 }
 
 fun slotsFor(reminders: List<Reminder>, occs: List<Occurrence>, day: LocalDate): List<Slot> =
-    reminders.filter { it.status == Status.ACTIVE }.flatMap { slotsOf(it, occs, day) }.sortedBy { it.dueAt }
+    reminders.filter { it.status == Status.ACTIVE || it.isArchivedOnce() }.flatMap { slotsOf(it, occs, day) }
+        .filter { it.reminder.status == Status.ACTIVE || it.state != null }.sortedBy { it.dueAt }
+
+/** Автоархивированное одноразовое дело: остаётся видно в тот день, когда его выполнили. */
+private fun Reminder.isArchivedOnce() = status == Status.ARCHIVED && triggerMode == Trigger.TIME && sched.type == ScheduleType.ONCE
 
 enum class CellKind { NONE, DONE, MISS, SHIFT, PART, PEND, VALUE }
 data class Cell(val kind: CellKind, val text: String = "")
@@ -55,6 +59,8 @@ fun cellOf(r: Reminder, day: LocalDate, occs: List<Occurrence>, ms: List<Measure
     return when {
         done == n -> Cell(CellKind.DONE)
         done > 0 -> Cell(CellKind.PART, "$done/$n")
+        slots.any { it.checked.isNotEmpty() } && r.checkItems.isNotEmpty() ->
+            Cell(CellKind.PART, "${slots.sumOf { it.checked.size }}/${n * r.checkItems.size}")
         slots.any { it.state == OccState.SHIFTED } -> Cell(CellKind.SHIFT)
         slots.all { it.state == OccState.SKIPPED || it.state == OccState.MISSED } -> Cell(CellKind.MISS)
         day.isAfter(today()) -> Cell(CellKind.NONE)
